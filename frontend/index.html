@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Green Zone EDHKL — Voice Clinical Notes Assistant</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Green Zone EDHKL — Voice Clinical Notes Assistant</h1>
+    <span id="statusPill" class="pill pill-idle">Idle</span>
+  </header>
+
+  <main>
+    <!-- STEP 1: CONSENT -->
+    <section id="consentSection" class="card">
+      <h2>Step 1 — Patient Consent</h2>
+      <label class="check-row">
+        <input type="checkbox" id="chkPdpa" />
+        Patient has agreed under PDPA to the processing of their clinical information.
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="chkAiDisclosed" />
+        Patient has been informed that an AI assistant is used to help draft this document.
+      </label>
+      <label class="field-row">
+        Clerking doctor (name/ID):
+        <input type="text" id="doctorName" placeholder="Dr. ..." />
+      </label>
+      <button id="btnConfirmConsent" class="btn-primary">Confirm Consent &amp; Continue</button>
+      <p class="hint">Both boxes must be checked before recording can start.</p>
+    </section>
+
+    <!-- STEP 2: RECORD -->
+    <section id="recordSection" class="card" hidden>
+      <h2>Step 2 — Clerking</h2>
+      <div class="controls">
+        <button id="btnStart" class="btn-primary">● Start</button>
+        <button id="btnStop" class="btn-danger" disabled>■ Stop</button>
+        <span id="recIndicator" class="rec-indicator" hidden>Recording…</span>
+      </div>
+
+      <label class="field-label" for="transcript">Live transcript (editable)</label>
+      <textarea id="transcript" rows="10" placeholder="Speak — the transcript will appear here. You can also type/edit directly."></textarea>
+
+      <label class="field-label" for="additionalDocs">Additional documents / vitals / results (paste text)</label>
+      <textarea id="additionalDocs" rows="4" placeholder="e.g. vitals sheet, lab results, ECG report text..."></textarea>
+
+      <button id="btnGenerate" class="btn-primary">Generate Clinical Note</button>
+      <p id="genStatus" class="hint"></p>
+    </section>
+
+    <!-- STEP 3: NOTE -->
+    <section id="noteSection" class="card" hidden>
+      <h2>Step 3 — Draft Clinical Note (MOH ED format)</h2>
+      <p class="hint warn">AI-generated draft — the clerking doctor must review, correct, and sign before this becomes part of the medical record.</p>
+      <textarea id="noteOutput" rows="24"></textarea>
+      <div class="controls">
+        <button id="btnCopy" class="btn-secondary">Copy</button>
+        <button id="btnPrint" class="btn-secondary">Print</button>
+        <button id="btnNewCase" class="btn-secondary">New Case</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
