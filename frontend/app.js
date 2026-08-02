@@ -21,6 +21,9 @@ const noteOutput = document.getElementById("noteOutput");
 const btnCopy = document.getElementById("btnCopy");
 const btnPrint = document.getElementById("btnPrint");
 const btnNewCase = document.getElementById("btnNewCase");
+const chkDeidentified = document.getElementById("chkDeidentified");
+const btnSaveExample = document.getElementById("btnSaveExample");
+const saveExampleStatus = document.getElementById("saveExampleStatus");
 
 let consent = null;
 let recognition = null;
@@ -150,6 +153,35 @@ btnCopy.addEventListener("click", async () => {
 });
 
 btnPrint.addEventListener("click", () => window.print());
+
+btnSaveExample.addEventListener("click", async () => {
+  if (!chkDeidentified.checked) {
+    alert("Please confirm the example is de-identified before saving it for training.");
+    return;
+  }
+  btnSaveExample.disabled = true;
+  saveExampleStatus.textContent = "Saving…";
+  try {
+    const res = await fetch("/api/training-examples", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: transcriptEl.value,
+        additional_docs: additionalDocsEl.value,
+        final_note: noteOutput.value,
+        deidentified_confirmed: chkDeidentified.checked,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Failed to save example");
+    saveExampleStatus.textContent = `Saved. Total examples so far: ${data.total_examples}`;
+    chkDeidentified.checked = false;
+  } catch (err) {
+    saveExampleStatus.textContent = "Error: " + err.message;
+  } finally {
+    btnSaveExample.disabled = false;
+  }
+});
 
 btnNewCase.addEventListener("click", () => {
   finalTranscript = "";

@@ -9,4 +9,6 @@ services:
       - backend/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/backend/data
     restart: unless-stopped

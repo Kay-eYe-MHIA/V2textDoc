@@ -61,6 +61,23 @@
         <button id="btnPrint" class="btn-secondary">Print</button>
         <button id="btnNewCase" class="btn-secondary">New Case</button>
       </div>
+
+      <hr />
+      <h2>Build the training dataset (optional)</h2>
+      <p class="hint">
+        Saving this example (edit the note above first if needed) helps fine-tune a
+        local model on real EDHKL-style notes over time. Saved locally only — never
+        uploaded anywhere by this app.
+      </p>
+      <label class="check-row">
+        <input type="checkbox" id="chkDeidentified" />
+        I confirm this transcript/note has been de-identified (no patient name, IC
+        number, or other direct identifiers) before saving it for training.
+      </label>
+      <div class="controls">
+        <button id="btnSaveExample" class="btn-secondary">Save as Training Example</button>
+        <span id="saveExampleStatus" class="hint"></span>
+      </div>
     </section>
   </main>
 

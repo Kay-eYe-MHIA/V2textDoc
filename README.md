@@ -17,10 +17,11 @@ Emergency Department clerking format for the doctor to review and sign.
   - `ollama` — local call to a model running on your own machine via
     [Ollama](https://ollama.com). Free, works offline, no API key, but needs decent
     hardware and generally drafts lower-quality notes than Claude.
-- **No fine-tuning**: neither Claude nor most local models offer easy customer
-  fine-tuning for this use case, so "familiarizing" the model is done via prompt
-  engineering (the system prompt + few-shot example). Swap in EDHKL's real clerking
-  sheet / sample notes in `clinical_note_prompt.py` to sharpen the format match.
+- **No fine-tuning yet**: Claude doesn't offer customer fine-tuning for this use
+  case, so its "familiarization" is done via prompt engineering (the system prompt
+  + few-shot example in `clinical_note_prompt.py`). Local Llama models *can* be
+  fine-tuned (e.g. via LoRA/QLoRA, see "Building a training dataset" below) — the
+  app now has a built-in way to collect the training data for that as you use it.
 
 ## Run it — cloud (Claude API)
 
@@ -56,6 +57,26 @@ Note: local models are noticeably slower per note and more likely to miss detail
 or drift from the requested format than Claude — worth comparing both before
 deciding which to run day-to-day.
 
+## Building a training dataset (for future fine-tuning)
+
+Every time you review a generated note (Step 3), you can tick "I confirm this
+transcript/note has been de-identified" and click **Save as Training Example**.
+This appends the transcript + supporting docs + your final (possibly edited)
+note as one line to `data/training_examples.jsonl` on your own machine — never
+uploaded anywhere by this app.
+
+- The `data/` folder is git-ignored on purpose — it will contain clinical text,
+  so it must never be committed to this repo.
+- **Only save de-identified examples** — the checkbox is a reminder, not a
+  guarantee; it's still on the doctor to actually strip patient names/IC numbers
+  from the transcript before saving. This matters even more if the resulting
+  dataset is later moved to a rented cloud GPU for fine-tuning a larger model
+  (see "is it doable" discussion — QLoRA fine-tuning, export to GGUF, then run
+  the fine-tuned model locally via Ollama exactly as today).
+- Once there are enough examples (aim for 50-200+ covering a range of
+  presentations), they're ready to feed into a fine-tuning pipeline — that's the
+  next phase once the dataset has enough real coverage.
+
 ## Data & compliance — read before real use
 
 This MVP was built as "cloud-first, to see the interface" per initial request.
@@ -84,6 +105,7 @@ backend/
   main.py                  FastAPI app: /api/generate-note, /api/health, serves frontend
   llm_backends.py          Pluggable note generation: Anthropic (cloud) or Ollama (local)
   clinical_note_prompt.py  MOH ED format system prompt + worked example
+  training_data.py         Appends approved examples to data/training_examples.jsonl
   requirements.txt
   Dockerfile
   .env.example
@@ -92,11 +114,12 @@ frontend/
   app.js                   Web Speech API recording + calls backend
   style.css
 docker-compose.yml
+data/                      (git-ignored) collected training examples, created at runtime
 ```
 
 ## Next steps to discuss
 
-- Local/offline STT + LLM (see compliance section)
+- Fine-tuning a local model on the collected `data/training_examples.jsonl`
 - Real EDHKL clerking template + sample notes
 - Persisting notes to an EHR / hospital system instead of copy-paste
 - Multi-user auth (currently single-PC, no login)

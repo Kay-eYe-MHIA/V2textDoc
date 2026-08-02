@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from llm_backends import generate_note_text
+from training_data import save_example, count_examples
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -60,6 +61,38 @@ def generate_note(req: GenerateNoteRequest):
         generated_at=datetime.now(timezone.utc).isoformat(),
         model=model_used,
     )
+
+
+class SaveExampleRequest(BaseModel):
+    transcript: str
+    additional_docs: str = ""
+    final_note: str
+    deidentified_confirmed: bool
+
+
+class SaveExampleResponse(BaseModel):
+    total_examples: int
+
+
+@app.post("/api/training-examples", response_model=SaveExampleResponse)
+def add_training_example(req: SaveExampleRequest):
+    if not req.deidentified_confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="Please confirm the example is de-identified before saving it for training.",
+        )
+    if not req.transcript.strip() or not req.final_note.strip():
+        raise HTTPException(status_code=400, detail="Transcript and final note cannot be empty.")
+
+    total = save_example(
+        req.transcript, req.additional_docs, req.final_note, req.deidentified_confirmed
+    )
+    return SaveExampleResponse(total_examples=total)
+
+
+@app.get("/api/training-examples/count", response_model=SaveExampleResponse)
+def training_example_count():
+    return SaveExampleResponse(total_examples=count_examples())
 
 
 @app.get("/api/health")
