@@ -74,8 +74,9 @@ uploaded anywhere by this app.
   (see "is it doable" discussion — QLoRA fine-tuning, export to GGUF, then run
   the fine-tuned model locally via Ollama exactly as today).
 - Once there are enough examples (aim for 50-200+ covering a range of
-  presentations), they're ready to feed into a fine-tuning pipeline — that's the
-  next phase once the dataset has enough real coverage.
+  presentations), they're ready to feed into a fine-tuning pipeline — see
+  `training/` for a ready-to-run Colab notebook that fine-tunes a local Llama
+  model with LoRA on this dataset and exports it for Ollama.
 
 ## Data & compliance — read before real use
 
