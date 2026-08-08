@@ -9,6 +9,10 @@ const consentSection = document.getElementById("consentSection");
 const recordSection = document.getElementById("recordSection");
 const noteSection = document.getElementById("noteSection");
 
+const modeSummary = document.getElementById("modeSummary");
+const modeConversation = document.getElementById("modeConversation");
+const conversationModeWarning = document.getElementById("conversationModeWarning");
+
 const btnStart = document.getElementById("btnStart");
 const btnStop = document.getElementById("btnStop");
 const recIndicator = document.getElementById("recIndicator");
@@ -26,13 +30,24 @@ const btnSaveExample = document.getElementById("btnSaveExample");
 const saveExampleStatus = document.getElementById("saveExampleStatus");
 
 let consent = null;
-let recognition = null;
-let finalTranscript = "";
+let mediaRecorder = null;
+let mediaStream = null;
+let audioChunks = [];
 
 function setStatus(text, cls) {
   statusPill.textContent = text;
   statusPill.className = "pill " + cls;
 }
+
+function getSelectedMode() {
+  return modeConversation.checked ? "conversation" : "summary";
+}
+
+function updateModeWarning() {
+  conversationModeWarning.hidden = !modeConversation.checked;
+}
+modeSummary.addEventListener("change", updateModeWarning);
+modeConversation.addEventListener("change", updateModeWarning);
 
 btnConfirmConsent.addEventListener("click", () => {
   if (!chkPdpa.checked || !chkAiDisclosed.checked) {
@@ -49,64 +64,95 @@ btnConfirmConsent.addEventListener("click", () => {
   setStatus("Ready", "pill-idle");
 });
 
-function initRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    genStatus.textContent =
-      "Live voice transcription needs Chrome or Edge. You can still type/paste the transcript manually.";
-    btnStart.disabled = true;
-    return null;
+function pickMimeType() {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+  ];
+  for (const type of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) return type;
   }
-  const rec = new SpeechRecognition();
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.lang = "en-MY";
-
-  rec.onresult = (event) => {
-    let interim = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const text = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalTranscript += text + " ";
-      } else {
-        interim += text;
-      }
-    }
-    transcriptEl.value = (finalTranscript + interim).trim();
-  };
-
-  rec.onerror = (event) => {
-    console.error("Speech recognition error", event.error);
-  };
-
-  rec.onend = () => {
-    if (btnStop.disabled === false) {
-      // Chrome auto-stops after silence; restart while user hasn't pressed Stop.
-      rec.start();
-    }
-  };
-
-  return rec;
+  return "";
 }
 
-btnStart.addEventListener("click", () => {
-  if (!recognition) recognition = initRecognition();
-  if (!recognition) return;
-  finalTranscript = transcriptEl.value ? transcriptEl.value + " " : "";
-  recognition.start();
+btnStart.addEventListener("click", async () => {
+  if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
+    genStatus.textContent = "This browser doesn't support audio recording.";
+    return;
+  }
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    genStatus.textContent = "Microphone access denied or unavailable: " + err.message;
+    return;
+  }
+
+  const mimeType = pickMimeType();
+  audioChunks = [];
+  mediaRecorder = mimeType
+    ? new MediaRecorder(mediaStream, { mimeType })
+    : new MediaRecorder(mediaStream);
+
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data && event.data.size > 0) audioChunks.push(event.data);
+  };
+
+  mediaRecorder.onstop = async () => {
+    mediaStream.getTracks().forEach((track) => track.stop());
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+    await uploadForTranscription(blob);
+  };
+
+  mediaRecorder.start();
   btnStart.disabled = true;
   btnStop.disabled = false;
+  modeSummary.disabled = true;
+  modeConversation.disabled = true;
   recIndicator.hidden = false;
+  genStatus.textContent = "";
   setStatus("Recording", "pill-recording");
 });
 
 btnStop.addEventListener("click", () => {
   btnStop.disabled = true;
-  btnStart.disabled = false;
   recIndicator.hidden = true;
-  if (recognition) recognition.stop();
-  setStatus("Ready", "pill-idle");
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
 });
+
+async function uploadForTranscription(blob) {
+  setStatus("Transcribing", "pill-processing");
+  genStatus.textContent = "Transcribing audio…";
+  btnGenerate.disabled = true;
+
+  try {
+    const formData = new FormData();
+    const ext = (mediaRecorder.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
+    formData.append("audio", blob, `recording.${ext}`);
+    formData.append("patient_agreed_pdpa", String(consent.patient_agreed_pdpa));
+    formData.append("ai_disclosed_to_patient", String(consent.ai_disclosed_to_patient));
+
+    const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Failed to transcribe audio");
+
+    const existing = transcriptEl.value.trim();
+    transcriptEl.value = existing ? existing + " " + data.transcript : data.transcript;
+    genStatus.textContent = "Transcription complete — review/edit above before generating.";
+    setStatus("Ready", "pill-idle");
+  } catch (err) {
+    genStatus.textContent = "Error: " + err.message;
+    setStatus("Ready", "pill-idle");
+  } finally {
+    btnStart.disabled = false;
+    modeSummary.disabled = false;
+    modeConversation.disabled = false;
+    btnGenerate.disabled = false;
+  }
+}
 
 btnGenerate.addEventListener("click", async () => {
   if (!consent) {
@@ -128,6 +174,7 @@ btnGenerate.addEventListener("click", async () => {
       body: JSON.stringify({
         transcript: transcriptEl.value,
         additional_docs: additionalDocsEl.value,
+        mode: getSelectedMode(),
         consent,
       }),
     });
@@ -184,7 +231,7 @@ btnSaveExample.addEventListener("click", async () => {
 });
 
 btnNewCase.addEventListener("click", () => {
-  finalTranscript = "";
+  audioChunks = [];
   transcriptEl.value = "";
   additionalDocsEl.value = "";
   noteOutput.value = "";
@@ -192,6 +239,8 @@ btnNewCase.addEventListener("click", () => {
   chkPdpa.checked = false;
   chkAiDisclosed.checked = false;
   doctorName.value = "";
+  modeSummary.checked = true;
+  updateModeWarning();
   consent = null;
   noteSection.hidden = true;
   recordSection.hidden = true;

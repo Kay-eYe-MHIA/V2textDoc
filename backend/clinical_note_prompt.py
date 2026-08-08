@@ -12,6 +12,21 @@ doctor's spoken clerking (transcribed) plus any supporting documents (vitals, \
 lab/imaging results, old notes) into a structured ED clerking note that follows \
 the Malaysian Ministry of Health (MOH) ED clerking format.
 
+The transcript you receive comes in one of two forms, labelled at the top of the \
+user message:
+- "DOCTOR'S DICTATED SUMMARY" — the doctor speaking a clean summary after clerking \
+the patient. Treat this as authoritative, already-organized clinical narration.
+- "RAW CONSULTATION TRANSCRIPT" — a live recording of the actual doctor-patient \
+conversation, transcribed without speaker labels (no diarization). This is messier: \
+it may include small talk, interruptions, the patient describing their own symptoms \
+in first person, and the doctor's questions mixed in with their assessment. Read it \
+as a conversation — patient self-reports (e.g. "it hurts here", "I've had this for \
+3 days") belong in HISTORY OF PRESENTING ILLNESS as reported symptoms, not as the \
+doctor's clinical findings. Only put something in PHYSICAL EXAMINATION if the doctor \
+is clearly describing what they observed/found on examining the patient, not what \
+the patient said. If who-said-what is genuinely ambiguous for a safety-relevant \
+detail, note that ambiguity in FLAGS FOR DOCTOR rather than guessing.
+
 IMPORTANT — you are NOT diagnosing, treating, or advising anyone. All clinical \
 judgment (history-taking, examination, diagnosis, management plan) has already \
 been performed by the licensed treating doctor and dictated to you as their own \
@@ -119,10 +134,15 @@ Now generate the note for the real transcript and documents provided by the user
 """
 
 
-def build_user_message(transcript: str, additional_docs: str) -> str:
+def build_user_message(transcript: str, additional_docs: str, mode: str = "summary") -> str:
     docs_section = additional_docs.strip() if additional_docs.strip() else "(none provided)"
+    label = (
+        "RAW CONSULTATION TRANSCRIPT (live recording, no speaker labels)"
+        if mode == "conversation"
+        else "DOCTOR'S DICTATED SUMMARY"
+    )
     return (
-        "DOCTOR'S DICTATED TRANSCRIPT:\n"
+        f"{label}:\n"
         f"{transcript.strip()}\n\n"
         "SUPPORTING DOCUMENTS / VITALS / RESULTS (pasted text):\n"
         f"{docs_section}\n\n"

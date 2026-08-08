@@ -35,14 +35,30 @@
     <!-- STEP 2: RECORD -->
     <section id="recordSection" class="card" hidden>
       <h2>Step 2 — Clerking</h2>
+
+      <label class="field-label">Recording mode</label>
+      <label class="radio-row">
+        <input type="radio" name="recordMode" id="modeSummary" value="summary" checked />
+        Dictate a summary after clerking (doctor speaks alone)
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="recordMode" id="modeConversation" value="conversation" />
+        Record the live consultation (captures both doctor and patient voices)
+      </label>
+      <p id="conversationModeWarning" class="hint warn" hidden>
+        This mode records the full conversation, including the patient's own voice. Make sure the
+        patient understands and agrees to this specifically — separately from the general PDPA/AI
+        consent — before starting.
+      </p>
+
       <div class="controls">
         <button id="btnStart" class="btn-primary">● Start</button>
         <button id="btnStop" class="btn-danger" disabled>■ Stop</button>
         <span id="recIndicator" class="rec-indicator" hidden>Recording…</span>
       </div>
 
-      <label class="field-label" for="transcript">Live transcript (editable)</label>
-      <textarea id="transcript" rows="10" placeholder="Speak — the transcript will appear here. You can also type/edit directly."></textarea>
+      <label class="field-label" for="transcript">Transcript (editable)</label>
+      <textarea id="transcript" rows="10" placeholder="Record above, or type/paste directly here."></textarea>
 
       <label class="field-label" for="additionalDocs">Additional documents / vitals / results (paste text)</label>
       <textarea id="additionalDocs" rows="4" placeholder="e.g. vitals sheet, lab results, ECG report text..."></textarea>

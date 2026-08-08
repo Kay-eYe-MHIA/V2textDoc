@@ -27,14 +27,14 @@ def _get_anthropic_client() -> Anthropic:
     return _anthropic_client
 
 
-def _generate_with_anthropic(transcript: str, additional_docs: str) -> str:
+def _generate_with_anthropic(transcript: str, additional_docs: str, mode: str) -> str:
     client = _get_anthropic_client()
     response = client.messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=2000,
         system=MOH_ED_SYSTEM_PROMPT,
         messages=[
-            {"role": "user", "content": build_user_message(transcript, additional_docs)}
+            {"role": "user", "content": build_user_message(transcript, additional_docs, mode)}
         ],
     )
     return "".join(
@@ -42,7 +42,7 @@ def _generate_with_anthropic(transcript: str, additional_docs: str) -> str:
     )
 
 
-def _generate_with_ollama(transcript: str, additional_docs: str) -> str:
+def _generate_with_ollama(transcript: str, additional_docs: str, mode: str) -> str:
     try:
         resp = httpx.post(
             f"{OLLAMA_BASE_URL}/api/chat",
@@ -52,7 +52,7 @@ def _generate_with_ollama(transcript: str, additional_docs: str) -> str:
                     {"role": "system", "content": MOH_ED_SYSTEM_PROMPT},
                     {
                         "role": "user",
-                        "content": build_user_message(transcript, additional_docs),
+                        "content": build_user_message(transcript, additional_docs, mode),
                     },
                 ],
                 "stream": False,
@@ -72,9 +72,9 @@ def _generate_with_ollama(transcript: str, additional_docs: str) -> str:
     return data["message"]["content"]
 
 
-def generate_note_text(transcript: str, additional_docs: str) -> tuple[str, str]:
-    """Returns (note_text, model_name_used)."""
+def generate_note_text(transcript: str, additional_docs: str, mode: str = "summary") -> tuple[str, str]:
+    """Returns (note_text, model_name_used). mode is "summary" or "conversation"."""
     provider = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
     if provider == "ollama":
-        return _generate_with_ollama(transcript, additional_docs), OLLAMA_MODEL
-    return _generate_with_anthropic(transcript, additional_docs), ANTHROPIC_MODEL
+        return _generate_with_ollama(transcript, additional_docs, mode), OLLAMA_MODEL
+    return _generate_with_anthropic(transcript, additional_docs, mode), ANTHROPIC_MODEL

@@ -1,13 +1,14 @@
 import os
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from llm_backends import generate_note_text
 from training_data import save_example, count_examples
+from transcription import transcribe_audio
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -30,6 +31,7 @@ class ConsentRecord(BaseModel):
 class GenerateNoteRequest(BaseModel):
     transcript: str
     additional_docs: str = ""
+    mode: str = "summary"  # "summary" (dictated after clerking) or "conversation" (live consult capture)
     consent: ConsentRecord
 
 
@@ -48,9 +50,11 @@ def generate_note(req: GenerateNoteRequest):
         )
     if not req.transcript.strip():
         raise HTTPException(status_code=400, detail="Transcript is empty.")
+    if req.mode not in ("summary", "conversation"):
+        raise HTTPException(status_code=400, detail="mode must be 'summary' or 'conversation'.")
 
     try:
-        note_text, model_used = generate_note_text(req.transcript, req.additional_docs)
+        note_text, model_used = generate_note_text(req.transcript, req.additional_docs, req.mode)
     except RuntimeError as exc:  # missing config / unreachable local model
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:  # surfaces API errors (auth, rate limit, etc.) to the UI
@@ -61,6 +65,35 @@ def generate_note(req: GenerateNoteRequest):
         generated_at=datetime.now(timezone.utc).isoformat(),
         model=model_used,
     )
+
+
+class TranscribeResponse(BaseModel):
+    transcript: str
+
+
+@app.post("/api/transcribe", response_model=TranscribeResponse)
+async def transcribe(
+    audio: UploadFile = File(...),
+    patient_agreed_pdpa: bool = Form(...),
+    ai_disclosed_to_patient: bool = Form(...),
+):
+    if not patient_agreed_pdpa or not ai_disclosed_to_patient:
+        raise HTTPException(
+            status_code=400,
+            detail="PDPA consent and AI-use disclosure must both be confirmed before recording.",
+        )
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="No audio received.")
+
+    suffix = os.path.splitext(audio.filename or "")[1] or ".webm"
+    try:
+        text = transcribe_audio(audio_bytes, suffix=suffix)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Transcription error: {exc}") from exc
+
+    return TranscribeResponse(transcript=text)
 
 
 class SaveExampleRequest(BaseModel):

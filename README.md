@@ -6,8 +6,20 @@ Emergency Department clerking format for the doctor to review and sign.
 
 ## How it works
 
-- **Speech-to-text**: runs in the browser (Chrome/Edge Web Speech API) — no audio
-  file is uploaded anywhere. Only the resulting text transcript is sent to the backend.
+- **Recording modes**: the doctor picks one before starting each case —
+  - **Dictate a summary after clerking** — the original flow: the doctor speaks a
+    clean summary alone.
+  - **Record the live consultation** — the mic stays open during the actual
+    doctor-patient conversation, capturing both voices; the note is then generated
+    from that raw transcript instead of a curated summary. This is more sensitive
+    (it captures the patient's own voice/words), so the UI shows an extra warning
+    to get separate patient buy-in for this mode specifically.
+- **Speech-to-text**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+  (local Whisper) running in the backend container — audio never leaves the machine.
+  The browser records audio (`MediaRecorder`) and uploads it to `/api/transcribe`;
+  the backend writes it to a temp file just long enough to transcribe, then deletes
+  it immediately — raw audio is never written to permanent storage. First run
+  downloads the model weights automatically (needs internet once; cached after).
 - **Note generation**: the backend sends the transcript + any pasted documents to an
   LLM, using a system prompt (`backend/clinical_note_prompt.py`) that encodes the
   MOH ED clerking section order and a worked example. The LLM backend is pluggable
@@ -83,14 +95,21 @@ uploaded anywhere by this app.
 This MVP was built as "cloud-first, to see the interface" per initial request.
 Before using with real patient data, decide:
 
-1. **PDPA / data residency**: with `LLM_PROVIDER=anthropic`, the transcript text
-   leaves the machine to reach the Claude API — confirm this is acceptable under
-   EDHKL/hospital IT policy and PDPA. Switching to `LLM_PROVIDER=ollama` (see "Run
-   it — local/offline" above) keeps note generation fully on-machine; the only
-   remaining external call is the browser's built-in speech-to-text (see next point).
-2. **Speech-to-text vendor**: the browser's built-in recognizer (Chrome/Edge)
-   sends audio to Google's servers for transcription. If that's not acceptable,
-   this needs to be replaced with a local Whisper model instead.
+1. **PDPA / data residency**: speech-to-text is fully local (Whisper) regardless
+   of `LLM_PROVIDER`. With `LLM_PROVIDER=anthropic`, the *text* transcript (not
+   audio) leaves the machine to reach the Claude API — confirm this is acceptable
+   under EDHKL/hospital IT policy and PDPA. Switching to `LLM_PROVIDER=ollama`
+   (see "Run it — local/offline" above) keeps everything, audio and text, fully
+   on-machine.
+2. **Live consultation recording** (the "Record the live consultation" mode) is a
+   meaningfully bigger privacy step than dictating a summary — it captures the
+   patient's own voice and words directly, not just what the doctor chooses to
+   summarize. The UI's extra warning before this mode is a minimum, not a
+   substitute for an actual hospital-approved consent process for this specific
+   use case. Also note Whisper does not distinguish speakers (no diarization) —
+   the system prompt asks the model to infer patient-reported vs. doctor-observed
+   from context, but that's inherently imperfect; ambiguous cases are meant to
+   land in the note's "FLAGS FOR DOCTOR" section rather than being guessed.
 3. **Clinical sign-off**: every generated note is a draft. The UI reminds the
    doctor to review/edit before it becomes part of the medical record — this
    should stay a hard requirement, not just a UI hint.
@@ -103,16 +122,17 @@ Before using with real patient data, decide:
 
 ```
 backend/
-  main.py                  FastAPI app: /api/generate-note, /api/health, serves frontend
+  main.py                  FastAPI app: /api/generate-note, /api/transcribe, /api/health, serves frontend
+  transcription.py         Local Whisper (faster-whisper) speech-to-text
   llm_backends.py          Pluggable note generation: Anthropic (cloud) or Ollama (local)
-  clinical_note_prompt.py  MOH ED format system prompt + worked example
+  clinical_note_prompt.py  MOH ED format system prompt + worked example (summary + conversation modes)
   training_data.py         Appends approved examples to data/training_examples.jsonl
   requirements.txt
   Dockerfile
   .env.example
 frontend/
-  index.html               Consent → Record → Draft note, 3-step UI
-  app.js                   Web Speech API recording + calls backend
+  index.html               Consent → Record (mode select) → Draft note, 3-step UI
+  app.js                   MediaRecorder audio capture + calls backend
   style.css
 docker-compose.yml
 data/                      (git-ignored) collected training examples, created at runtime
@@ -120,7 +140,10 @@ data/                      (git-ignored) collected training examples, created at
 
 ## Next steps to discuss
 
+- Voice-based note editing (speak a correction after the draft is generated)
+- Patient biodata form ahead of consent
 - Fine-tuning a local model on the collected `data/training_examples.jsonl`
+  (see `training/` — RunPod pipeline in progress)
 - Real EDHKL clerking template + sample notes
 - Persisting notes to an EHR / hospital system instead of copy-paste
 - Multi-user auth (currently single-PC, no login)
