@@ -1,7 +1,8 @@
-"""Batch-runs the 10 synthetic sample cases through the actual note-generation
-pipeline (whatever LLM_PROVIDER / model is currently configured in .env) and
-prints each result next to its reference note, for judging prompt/model
-quality across a range of presentations in one go.
+"""Batch-runs all synthetic sample cases (10 clean + 5 messy/garbled-
+transcription) through the actual note-generation pipeline (whatever
+LLM_PROVIDER / model is currently configured in .env) and prints each result
+next to its reference note, for judging prompt/model quality across a range
+of presentations in one go.
 
 Run inside the container:
     docker compose exec app python evaluate_prompt.py
@@ -9,7 +10,10 @@ Run inside the container:
     docker compose exec app python evaluate_prompt.py > eval_output.txt
 """
 from llm_backends import generate_note_text
-from seed_training_data import CASES
+from seed_training_data import CASES as CLEAN_CASES
+from sample_cases_messy import CASES as MESSY_CASES
+
+CASES = CLEAN_CASES + MESSY_CASES
 
 
 def main():
