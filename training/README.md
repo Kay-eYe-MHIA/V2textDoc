@@ -56,15 +56,51 @@ needed, tens of MB instead of gigabytes), so that fragile step is gone entirely.
    `edhkl_clinical_notes`, and download the small adapter files directly.
 5. Continue with the same `Modelfile` / `ollama create` / `.env` steps as the Colab version above.
 
-## Notes
+## Known issue: Ollama's `ADAPTER <folder>` fails on Windows
+
+If `ollama create` errors with `no Modelfile or safetensors files found` even though the folder and
+files clearly exist, that's a known unresolved Ollama bug on Windows
+([ollama/ollama#13314](https://github.com/ollama/ollama/issues/13314)) — not something wrong with
+your files. Neither relative nor absolute paths fix it, and putting the Modelfile inside the
+adapter folder with `ADAPTER .` doesn't help either.
+
+**Workaround**: convert the adapter to a single GGUF file instead of a safetensors folder — use
+`convert_adapter_to_gguf_colab.ipynb`. It doesn't need a GPU (pure CPU tensor conversion), so no
+quota to worry about; just re-upload the adapter files you already downloaded. One gotcha: point
+`--base-model-id` at the **non-quantized** model (`unsloth/Meta-Llama-3.1-8B-Instruct`, no
+`-bnb-4bit` suffix) — llama.cpp's conversion tooling can't dequantize bitsandbytes models and will
+fail with `NotImplementedError: Quant method is not yet supported: 'bitsandbytes'` if you point it
+at the same `-bnb-4bit` ID used for training. The resulting `edhkl_clinical_notes.gguf` goes in the
+Modelfile as `ADAPTER ./edhkl_clinical_notes.gguf` (a single file, not a folder) — this uses a
+different Ollama code path that isn't affected by the directory-scanning bug.
+
+## Lessons learned from the first real fine-tune attempt
+
+15 examples (10 synthetic + 5 messy/garbled-transcription), 5 epochs, on `llama3.1:8b`. Result: it
+made one case genuinely better (correctly connecting a head injury's LOC+vomiting to a missing CT
+brain plan), but got *worse* on several others — most notably, it started inserting a
+"lactate/blood cultures not mentioned" flag into completely unrelated cases (a STEMI, an asthma
+exacerbation, a head injury) with zero clinical basis for it. That phrase came from the 2-3
+sepsis-related training examples; the model memorized the surface phrasing rather than learning
+when it actually applies. Classic overfitting on too little, too-similar data, made worse by too
+many epochs.
+
+**Before trying again:**
+- Grow the dataset well past 15 — aim for 50+ examples, deliberately varied (don't let any one
+  presentation type like sepsis dominate a large fraction of the set).
+- Keep `num_train_epochs` low (2, the current default) until the dataset is much bigger.
+- Re-run `evaluate_prompt.py` against the fine-tuned model the same way as the stock model, and
+  compare case-by-case against the reference notes — don't just eyeball one or two outputs. This is
+  exactly what caught the regression above.
+- If a fine-tune makes things worse, reverting `OLLAMA_MODEL` back to `llama3.1:8b` in
+  `backend/.env` is instant and lossless — the base model and your training data are both still
+  there.
+
+## Other notes
 
 - **Only synthetic/de-identified examples should go into this pipeline** — the dataset leaves your
   laptop to reach Colab's GPU. Fine, since the collected examples are marked de-identified at save
   time; don't skip that checkbox once real patient-derived text is involved.
-- **Dataset size**: with only a handful of examples, expect the fine-tune to nudge style/format
-  more than fix reasoning gaps. If the model starts outputting near-identical text regardless of
-  input (overfitting), that means too few examples for the number of training epochs — add more
-  examples or lower `num_train_epochs` in the notebook.
 - Default base model is `unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit`, matching the `llama3.1:8b`
   you've already been testing. Swap to a smaller Unsloth 4-bit model name in the notebook if you'd
   rather fine-tune a lighter one.
