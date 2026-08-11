@@ -2,8 +2,14 @@
 
 Two versions of the same notebook — both fine-tune a small Llama model with LoRA (via
 [Unsloth](https://unsloth.ai)) on the training examples you've collected through the app, then
-export a GGUF file to run locally in Ollama. Training runs on a free cloud GPU — nothing about your
-laptop or Docker setup needs GPU support for this step.
+export just the small LoRA adapter for Ollama to load on top of your existing `llama3.1:8b`. Training
+runs on a free cloud GPU — nothing about your laptop or Docker setup needs GPU support for this step.
+
+Earlier versions of these notebooks merged the LoRA into the full 8B model and converted the whole
+thing to GGUF (building llama.cpp from source, processing a ~16GB merged model) — that step
+repeatedly hung, ran out of disk, or timed out in testing. Ollama can load a LoRA adapter directly
+on top of a base model via the Modelfile `ADAPTER` instruction (safetensors, no GGUF conversion
+needed, tens of MB instead of gigabytes), so that fragile step is gone entirely.
 
 - `clinical_notes_lora_colab.ipynb` — Google Colab (free T4, daily quota)
 - `clinical_notes_lora_kaggle.ipynb` — Kaggle Notebooks (free T4 x2, ~30 hrs/week quota, separate
@@ -22,14 +28,20 @@ laptop or Docker setup needs GPU support for this step.
    (Uploading `clinical_note_prompt.py` — rather than pasting the prompt text into the notebook —
    means training always uses the exact same system prompt the app sends at inference time, even
    after you edit it.)
-4. At the end, it copies the `.gguf` file + an auto-generated Ollama `Modelfile` to your Google
-   Drive (asks you to authorize Drive access) — download both from drive.google.com, or they'll
-   already be local if you have Google Drive Desktop syncing.
-5. Put both files together in one folder in your project, e.g. `V2textDoc\models\edhkl_clinical_notes\`, then:
+4. At the end, it copies the small LoRA adapter folder to your Google Drive (asks you to authorize
+   Drive access) — download it from drive.google.com, or it'll already be local if you have Google
+   Drive Desktop syncing.
+5. Put the folder inside your project, e.g. `V2textDoc\models\edhkl_clinical_notes\`. In
+   `V2textDoc\models\`, create a plain text file named `Modelfile` containing exactly:
+   ```
+   FROM llama3.1:8b
+   ADAPTER ./edhkl_clinical_notes
+   ```
+6. From a terminal in `V2textDoc\models\`:
    ```
    ollama create edhkl-clinical-notes -f Modelfile
    ```
-6. In `backend/.env`, set `OLLAMA_MODEL=edhkl-clinical-notes`, then
+7. In `backend/.env`, set `OLLAMA_MODEL=edhkl-clinical-notes`, then
    `docker compose down && docker compose up` (no rebuild needed).
 
 ## How to run it — Kaggle (alternative when Colab's quota is exhausted)
@@ -41,9 +53,8 @@ laptop or Docker setup needs GPU support for this step.
    `clinical_note_prompt.py` as a new dataset (any name — the notebook finds them automatically
    under `/kaggle/input/`).
 4. Run all cells. At the end, open the file browser panel (folder icon, right side), navigate into
-   `edhkl_clinical_notes`, and download the `.gguf` file and `Modelfile` directly — no zip, no
-   Drive step needed, Kaggle's own download handles large files fine.
-5. Continue with the same `ollama create` / `.env` steps as the Colab version above.
+   `edhkl_clinical_notes`, and download the small adapter files directly.
+5. Continue with the same `Modelfile` / `ollama create` / `.env` steps as the Colab version above.
 
 ## Notes
 
