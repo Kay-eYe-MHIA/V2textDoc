@@ -14,12 +14,20 @@ Emergency Department clerking format for the doctor to review and sign.
     from that raw transcript instead of a curated summary. This is more sensitive
     (it captures the patient's own voice/words), so the UI shows an extra warning
     to get separate patient buy-in for this mode specifically.
-- **Speech-to-text**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-  (local Whisper) running in the backend container — audio never leaves the machine.
-  The browser records audio (`MediaRecorder`) and uploads it to `/api/transcribe`;
-  the backend writes it to a temp file just long enough to transcribe, then deletes
-  it immediately — raw audio is never written to permanent storage. First run
-  downloads the model weights automatically (needs internet once; cached after).
+- **Speech-to-text**: two layers, working together —
+  - **Live preview** (Chrome/Edge only): the browser's built-in speech recognition shows a
+    rough, scrolling transcript while recording, purely for visual feedback. This routes
+    briefly through the browser vendor's own cloud recognizer (e.g. Google's, in Chrome) —
+    it is never saved and is discarded the moment recording stops.
+    Firefox/Safari and other browsers simply skip this — recording still works, there's
+    just no live text until Stop.
+  - **Final transcript**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (local
+    Whisper) running in the backend container. The browser uploads the recorded audio
+    (`MediaRecorder`) to `/api/transcribe` once Stop is pressed; the backend writes it to a
+    temp file just long enough to transcribe, then deletes it immediately — raw audio is
+    never written to permanent storage, and this is what actually populates the transcript
+    used for note generation, replacing the live preview text. First run downloads the
+    Whisper model weights automatically (needs internet once; cached after).
 - **Note generation**: the backend sends the transcript + any pasted documents to an
   LLM, using a system prompt (`backend/clinical_note_prompt.py`) that encodes the
   MOH ED clerking section order and a worked example. The LLM backend is pluggable
@@ -95,12 +103,17 @@ uploaded anywhere by this app.
 This MVP was built as "cloud-first, to see the interface" per initial request.
 Before using with real patient data, decide:
 
-1. **PDPA / data residency**: speech-to-text is fully local (Whisper) regardless
-   of `LLM_PROVIDER`. With `LLM_PROVIDER=anthropic`, the *text* transcript (not
-   audio) leaves the machine to reach the Claude API — confirm this is acceptable
-   under EDHKL/hospital IT policy and PDPA. Switching to `LLM_PROVIDER=ollama`
-   (see "Run it — local/offline" above) keeps everything, audio and text, fully
-   on-machine.
+1. **PDPA / data residency**: the transcript actually used for note generation comes
+   from local Whisper, regardless of `LLM_PROVIDER`. The one exception is the live
+   preview text shown *while recording* (Chrome/Edge's built-in speech recognition,
+   for visual feedback only) — that briefly routes through the browser vendor's own
+   cloud recognizer and is discarded on Stop, never saved or sent to the backend. If
+   that's not acceptable for a given recording, the doctor can ignore/not read the
+   live preview and just wait for the Whisper transcript after Stop. Separately, with
+   `LLM_PROVIDER=anthropic`, the *text* transcript (not audio) leaves the machine to
+   reach the Claude API — confirm this is acceptable under EDHKL/hospital IT policy
+   and PDPA. Switching to `LLM_PROVIDER=ollama` (see "Run it — local/offline" above)
+   keeps note generation fully on-machine too.
 2. **Live consultation recording** (the "Record the live consultation" mode) is a
    meaningfully bigger privacy step than dictating a summary — it captures the
    patient's own voice and words directly, not just what the doctor chooses to

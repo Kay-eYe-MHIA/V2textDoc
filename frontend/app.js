@@ -33,6 +33,10 @@ let consent = null;
 let mediaRecorder = null;
 let mediaStream = null;
 let audioChunks = [];
+let recognition = null;
+let isRecording = false;
+let baseTranscript = "";
+let livePreviewText = "";
 
 function setStatus(text, cls) {
   statusPill.textContent = text;
@@ -77,6 +81,50 @@ function pickMimeType() {
   return "";
 }
 
+// Live preview only — rough, browser-based transcript shown while recording so
+// there's visual feedback. Replaced entirely by the accurate local Whisper
+// transcript once Stop is pressed. Not saved or sent anywhere itself.
+function initRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return null;
+
+  const rec = new SpeechRecognition();
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = "en-MY";
+
+  rec.onresult = (event) => {
+    let interim = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const text = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        livePreviewText += text + " ";
+      } else {
+        interim += text;
+      }
+    }
+    const combined = (livePreviewText + interim).trim();
+    transcriptEl.value = baseTranscript ? baseTranscript + " " + combined : combined;
+  };
+
+  rec.onerror = (event) => {
+    console.error("Live preview recognition error", event.error);
+  };
+
+  rec.onend = () => {
+    if (isRecording) {
+      // Chrome auto-stops after silence; restart while still recording.
+      try {
+        rec.start();
+      } catch (e) {
+        // already started / race on stop - ignore
+      }
+    }
+  };
+
+  return rec;
+}
+
 btnStart.addEventListener("click", async () => {
   if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
     genStatus.textContent = "This browser doesn't support audio recording.";
@@ -105,19 +153,40 @@ btnStart.addEventListener("click", async () => {
     await uploadForTranscription(blob);
   };
 
+  isRecording = true;
+  baseTranscript = transcriptEl.value.trim();
+  livePreviewText = "";
+
   mediaRecorder.start();
+
+  recognition = initRecognition();
+  if (recognition) {
+    try {
+      recognition.start();
+    } catch (e) {
+      // ignore - live preview is best-effort only
+    }
+  } else {
+    genStatus.textContent =
+      "Live preview needs Chrome or Edge — recording still works, transcript appears after Stop.";
+  }
+
   btnStart.disabled = true;
   btnStop.disabled = false;
   modeSummary.disabled = true;
   modeConversation.disabled = true;
   recIndicator.hidden = false;
-  genStatus.textContent = "";
   setStatus("Recording", "pill-recording");
 });
 
 btnStop.addEventListener("click", () => {
   btnStop.disabled = true;
   recIndicator.hidden = true;
+  isRecording = false;
+  if (recognition) {
+    recognition.stop();
+    recognition = null;
+  }
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     mediaRecorder.stop();
   }
@@ -139,8 +208,8 @@ async function uploadForTranscription(blob) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Failed to transcribe audio");
 
-    const existing = transcriptEl.value.trim();
-    transcriptEl.value = existing ? existing + " " + data.transcript : data.transcript;
+    // Replace the rough live-preview text with the accurate Whisper transcript.
+    transcriptEl.value = baseTranscript ? baseTranscript + " " + data.transcript : data.transcript;
     genStatus.textContent = "Transcription complete — review/edit above before generating.";
     setStatus("Ready", "pill-idle");
   } catch (err) {
@@ -232,6 +301,13 @@ btnSaveExample.addEventListener("click", async () => {
 
 btnNewCase.addEventListener("click", () => {
   audioChunks = [];
+  isRecording = false;
+  baseTranscript = "";
+  livePreviewText = "";
+  if (recognition) {
+    recognition.stop();
+    recognition = null;
+  }
   transcriptEl.value = "";
   additionalDocsEl.value = "";
   noteOutput.value = "";
